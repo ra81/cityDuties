@@ -10,7 +10,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 // @name          Сбор таможни по всем городам
 // @namespace     virtonomica
 // @description   Проходит по всем городам и собирает таможенные пошлины по всем товарам включая ИЦ
-// @version       1.2
+// @version       1.3
 // @include       https://virtonomic*.**/*/main/geo/countrydutylist/*
 // @require       https://code.jquery.com/jquery-1.11.1.min.js
 // ==/UserScript==
@@ -4104,13 +4104,13 @@ function getDuties_async() {
         for (let city in geos) {
             let [cntry, reg, cty] = geos[city];
             if (countryDict[cntry.id] != null) {
-                resDict.push(countryDict[cntry.id]);
+                resDict.push([cntry, reg, cty, countryDict[cntry.id]]);
                 continue;
             }
             let url = `/${Realm}/main/geo/countrydutylist/${cntry.id}`;
             let html = yield tryGet_async(url);
             let dDict = parseCountryDuties(html, url);
-            countryDict[cntry.id] = [cntry, reg, cty, dDict];
+            countryDict[cntry.id] = dDict;
             resDict.push([cntry, reg, cty, dDict]);
         }
         return resDict;

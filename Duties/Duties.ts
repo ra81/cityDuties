@@ -147,12 +147,12 @@ async function getDuties_async(): Promise<[ICountry, IRegion, ICity, IDictionary
     let geos = await getGeos_async();
 
     // для каждого города берем его страну тащим таможню и сохраняем в спец словарь чтобы не повторяться
-    let countryDict: IDictionaryN<[ICountry, IRegion, ICity, IDictionary<ICountryDuties>]> = {};
+    let countryDict: IDictionaryN<IDictionary<ICountryDuties>> = {};
     let resDict: [ICountry, IRegion, ICity, IDictionary<ICountryDuties>][] = [];
     for (let city in geos) {
         let [cntry, reg, cty] = geos[city];
         if (countryDict[cntry.id] != null) {
-            resDict.push(countryDict[cntry.id]);
+            resDict.push([cntry, reg, cty, countryDict[cntry.id]]);
             continue;
         }
 
@@ -160,7 +160,7 @@ async function getDuties_async(): Promise<[ICountry, IRegion, ICity, IDictionary
         let html = await tryGet_async(url);
         let dDict = parseCountryDuties(html, url);
 
-        countryDict[cntry.id] = [cntry, reg, cty, dDict];
+        countryDict[cntry.id] = dDict;
         resDict.push([cntry, reg, cty, dDict]);
     }
 
