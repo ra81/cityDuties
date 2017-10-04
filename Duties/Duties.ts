@@ -55,16 +55,15 @@ async function exportInfo_async($place: JQuery) {
 
     let storedInfo = await getDuties_async();
 
-    let exportStr = "city;img;ip;export;import" + "\n";
+    let exportStr = "country;region;city;img;ip;export;import" + "\n";
 
     // по всем городам и товарам пролетаем
-    for (let city in storedInfo) {
-        let dDict = storedInfo[city];
-
+    for (let [country, reg, city, dDict] of storedInfo) {
         for (let img in dDict) {
             let duties = dDict[img];
 
-            let str = formatStr("{0};{1};{2};{3};{4}", city, img, duties.ip, duties.export, duties.import);
+            let str = formatStr("{0};{1};{2};{3};{4};{5};{6}",
+                country.name, reg.name, city.name, img, duties.ip, duties.export, duties.import);
             exportStr += str + "\n";
         }
     }
@@ -140,41 +139,33 @@ async function getGeos_async(): Promise<IDictionary<[ICountry, IRegion, ICity]>>
 }
 
 /**
- * Возвращает словарь Город - Словарь<Таможенные пошлины>
+ * Возвращает Массив: Страна,Регион,Город, Словарь<Таможенные пошлины>
  */
-async function getDuties_async(): Promise<IDictionary<IDictionary<ICountryDuties>>> {
+async function getDuties_async(): Promise<[ICountry, IRegion, ICity, IDictionary<ICountryDuties>][]> {
 
     // запросим сначала таблицу город-страна-регион чтобы иметь связку для поиска
     let geos = await getGeos_async();
 
     // для каждого города берем его страну тащим таможню и сохраняем в спец словарь чтобы не повторяться
-    let countryDict: IDictionaryN<IDictionary<ICountryDuties>> = {};
-    let resDict: IDictionary<IDictionary<ICountryDuties>> = {};
+    let countryDict: IDictionaryN<[ICountry, IRegion, ICity, IDictionary<ICountryDuties>]> = {};
+    let resDict: [ICountry, IRegion, ICity, IDictionary<ICountryDuties>][] = [];
     for (let city in geos) {
-        let [country, ,] = geos[city];
-        if (countryDict[country.id] != null) {
-            resDict[city] = countryDict[country.id];
+        let [cntry, reg, cty] = geos[city];
+        if (countryDict[cntry.id] != null) {
+            resDict.push(countryDict[cntry.id]);
             continue;
         }
 
-        let url = `/${Realm}/main/geo/countrydutylist/${country.id}`;
+        let url = `/${Realm}/main/geo/countrydutylist/${cntry.id}`;
         let html = await tryGet_async(url);
         let dDict = parseCountryDuties(html, url);
 
-        countryDict[country.id] = dDict;
-        resDict[city] = dDict;
+        countryDict[cntry.id] = [cntry, reg, cty, dDict];
+        resDict.push([cntry, reg, cty, dDict]);
     }
 
     return resDict;
 }
 
-
-function nullCheck<T>(val: T | null) {
-
-    if (val == null)
-        throw new Error(`nullCheck Error`);
-
-    return val;
-}
 
 $(document).ready(() => run_async());

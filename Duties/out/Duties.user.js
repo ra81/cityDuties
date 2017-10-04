@@ -10,7 +10,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 // @name          Сбор таможни по всем городам
 // @namespace     virtonomica
 // @description   Проходит по всем городам и собирает таможенные пошлины по всем товарам включая ИЦ
-// @version       1.1
+// @version       1.2
 // @include       https://virtonomic*.**/*/main/geo/countrydutylist/*
 // @require       https://code.jquery.com/jquery-1.11.1.min.js
 // ==/UserScript==
@@ -425,6 +425,12 @@ function extractDate(str) {
     let y = parseInt(m[3]);
     return new Date(y, mon, d);
 }
+function extractDateOrError(str) {
+    let dt = extractDate(str);
+    if (dt == null)
+        throw new Error(`Не получилось извлечь дату из "${str}"`);
+    return dt;
+}
 /**
  * из даты формирует короткую строку типа 01.12.2017
  * @param date
@@ -544,6 +550,15 @@ function formatStr(str, ...args) {
     });
     return res;
 }
+/**
+ * если значение null то вывалит ошибку, иначе вернет само значение. Короткий метод для проверок на нулл
+ * @param val
+ */
+function nullCheck(val) {
+    if (val == null)
+        throw new Error(`nullCheck Error`);
+    return val;
+}
 // РЕГУЛЯРКИ ДЛЯ ССЫЛОК ------------------------------------
 // для 1 юнита
 // 
@@ -569,6 +584,7 @@ let url_manag_empl_rx = /\/[a-z]+\/main\/company\/view\/\d+\/unit_list\/employee
 // 
 let url_global_products_rx = /[a-z]+\/main\/globalreport\/marketing\/by_products\/\d+\/?$/i; // глобальный отчет по продукции из аналитики
 let url_products_rx = /\/[a-z]+\/main\/common\/main_page\/game_info\/products$/i; // страница со всеми товарами игры
+let url_trade_products_rx = /\/[a-z]+\/main\/common\/main_page\/game_info\/trading$/i; // страница с торгуемыми товарами
 let url_city_retail_report_rx = /\/[a-z]+\/(?:main|window)\/globalreport\/marketing\/by_trade_at_cities\/\d+/i; // розничный отчет по конкретному товару
 let url_products_size_rx = /\/[a-z]+\/main\/industry\/unit_type\/info\/2011\/volume\/?/i; // размеры продуктов на склада
 let url_country_duties_rx = /\/[a-z]+\/main\/geo\/countrydutylist\/\d+\/?/i; // таможенные пошлины и ИЦ
@@ -1089,7 +1105,7 @@ function buildStoreKey(realm, code, subid) {
     return res;
 }
 /**
- * Возвращает все ключи юнитов для заданного реалма и КОДА.
+ * Возвращает все ключи ЮНИТОВ для заданного реалма и КОДА.
  * @param realm
  * @param storeKey код ключа sh, udd, vh итд
  */
@@ -1105,6 +1121,26 @@ function getStoredUnitsKeys(realm, storeKey) {
         if (key !== buildStoreKey(realm, storeKey, subid))
             continue;
         res.push(key);
+    }
+    return res;
+}
+/**
+ * Возвращает все ключи ЮНИТОВ для заданного реалма и КОДА. А так же subid юнита отдельно
+ * @param realm
+ * @param storeKey код ключа sh, udd, vh итд
+ */
+function getStoredUnitsKeysA(realm, storeKey) {
+    let res = [];
+    for (let key in localStorage) {
+        // если в ключе нет числа, не брать его
+        let m = extractIntPositive(key);
+        if (m == null)
+            continue;
+        // если ключик не совпадает со старым ключем для посетителей
+        let subid = m[0];
+        if (key !== buildStoreKey(realm, storeKey, subid))
+            continue;
+        res.push([key, subid]);
     }
     return res;
 }
@@ -1130,6 +1166,25 @@ function Export($place, test) {
         string += `${key}=${localStorage[key]}`;
     }
     $txt.text(string);
+    $place.append($txt);
+    return true;
+}
+function ExportA($place, keys, converter, delim = "\n") {
+    if ($place.length <= 0)
+        return false;
+    if ($place.find("#txtExport").length > 0) {
+        $place.find("#txtExport").remove();
+        return false;
+    }
+    let $txt = $('<textarea id="txtExport" style="display:block;width: 800px; height: 200px"></textarea>');
+    let exportStr = "";
+    for (let key of keys) {
+        if (exportStr.length > 0)
+            exportStr += delim;
+        let item = converter == null ? localStorage[key] : converter(localStorage[key]);
+        exportStr += `${key}=${item}`;
+    }
+    $txt.text(exportStr);
     $place.append($txt);
     return true;
 }
@@ -1165,9 +1220,49 @@ function Import($place) {
                 let storeVal = kvp[1].trim();
                 if (storeKey.length <= 0 || storeVal.length <= 0)
                     throw new Error("Длина ключа или данных равна 0 " + item);
-                if (localStorage[storeKey])
+                if (localStorage[storeKey] != null)
                     logDebug(`Ключ ${storeKey} существует. Перезаписываем.`);
                 localStorage[storeKey] = storeVal;
+            });
+            alert("импорт завершен");
+        }
+        catch (err) {
+            let msg = err.message;
+            alert(msg);
+        }
+    });
+    $place.append($txt).append($saveBtn);
+    return true;
+}
+function ImportA($place, converter, delim = "\n") {
+    if ($place.length <= 0)
+        return false;
+    if ($place.find("#txtImport").length > 0) {
+        $place.find("#txtImport").remove();
+        $place.find("#saveImport").remove();
+        return false;
+    }
+    let $txt = $('<textarea id="txtImport" style="display:block;width: 800px; height: 200px"></textarea>');
+    let $saveBtn = $(`<input id="saveImport" type=button disabled="true" value="Save!">`);
+    $txt.on("input propertychange", (event) => $saveBtn.prop("disabled", false));
+    $saveBtn.on("click", (event) => {
+        let items = $txt.val().split(delim); // элементы вида Ключ=значение
+        logDebug(`загружено ${items.length} элементов`);
+        try {
+            items.forEach((val, i, arr) => {
+                let item = val.trim();
+                if (item.length <= 0)
+                    throw new Error(`получили пустую строку для элемента ${i}, невозможно импортировать.`);
+                let kvp = item.split("="); // пара ключ значение
+                if (kvp.length !== 2)
+                    throw new Error("Должен быть только ключ и значение а по факту не так. " + item);
+                let storeKey = kvp[0].trim();
+                let storeVal = kvp[1].trim();
+                if (storeKey.length <= 0 || storeVal.length <= 0)
+                    throw new Error("Длина ключа или данных равна 0 " + item);
+                if (localStorage[storeKey] != null)
+                    logDebug(`Ключ ${storeKey} существует. Перезаписываем.`);
+                localStorage[storeKey] = converter == null ? storeVal : converter(storeVal);
             });
             alert("импорт завершен");
         }
@@ -2072,9 +2167,11 @@ function parseUnitMainNew(html, url) {
         // city
         // "    Расположение: Великие Луки ("
         let lines = getOnlyText(oneOrError($html, "div.officePlace"));
-        let city = lines[1].split(":")[1].split("(")[0].trim();
+        let arr = execOrError(lines[1].trim(), /^расположение:(.*)\(/i);
+        //let city = lines[1].split(":")[1].split("(")[0].trim();
+        let city = arr[1].trim();
         if (city == null || city.length < 1)
-            throw new Error("не найден город юнита");
+            throw new Error(`не найден город юнита ${city}`);
         // name
         let name = oneOrError($html, "#headerInfo h1").text().trim();
         // обработка картинки
@@ -2495,6 +2592,8 @@ function parseWareMain(html, url) {
 }
 /**
  * Снабжение склада
+   [[товар, контракты[]], товары внизу страницы без контрактов]
+   возможно что будут дубли id товара ведь малиновый пиджак и простой имеют общий id
  * @param html
  * @param url
  */
@@ -2503,6 +2602,7 @@ function parseWareSupply(html, url) {
     try {
         // для 1 товара может быть несколько поставщиков, поэтому к 1 продукту будет идти массив контрактов
         let $rows = $html.find("tr.p_title");
+        // парсинг товаров на которые есть заказы
         let res = [];
         $rows.each((i, el) => {
             let $r = $(el); // это основной ряд, после него еще будут ряды до следующего это контракты
@@ -2640,6 +2740,49 @@ function parseWareSupply(html, url) {
                 });
             });
             res.push([product, contracts]);
+        });
+        // парсинг товаров внизу на которые заказов нет
+        let $items = $html.find("div.add_contract");
+        let arr = [];
+        $items.each((i, el) => {
+            let $div = $(el);
+            let $img = oneOrError($div, "img");
+            let img = $img.attr("src");
+            let name = $img.attr("alt");
+            let $a = $img.closest("a");
+            let n = extractIntPositive($a.attr("href"));
+            if (n == null || n.length != 3)
+                throw new Error("не нашли id товара " + img);
+            let id = n[2];
+            arr.push({ id: id, img: img, name: name });
+        });
+        return [res, arr];
+    }
+    catch (err) {
+        throw err;
+    }
+}
+/**
+ * Страница смены спецухи для склада.
+ * /olga/window/unit/speciality_change/6835788
+    [id, название, выделена?]
+ * @param html
+ * @param url
+ */
+function parseWareChangeSpec(html, url) {
+    let $html = $(html);
+    let res = [];
+    try {
+        let $rows = $html.find("table.list").find("tr.even,tr.odd");
+        if ($rows.length <= 0)
+            throw new Error("Не найдено ни одной специализации");
+        $rows.each((i, el) => {
+            let $r = $(el);
+            let $radio = oneOrError($r, "input");
+            let cat = parseInt($radio.val());
+            let name = $r.children("td").eq(1).text();
+            let checked = $radio.prop("checked");
+            res.push([cat, name, checked]);
         });
         return res;
     }
@@ -3575,6 +3718,30 @@ var MarketIndex;
     MarketIndex[MarketIndex["AA"] = 5] = "AA";
     MarketIndex[MarketIndex["AAA"] = 6] = "AAA";
 })(MarketIndex || (MarketIndex = {}));
+function mIndexFromString(str) {
+    let index = MarketIndex.None;
+    switch (str) {
+        case "AAA":
+            return MarketIndex.AAA;
+        case "AA":
+            return MarketIndex.AA;
+        case "A":
+            return MarketIndex.A;
+        case "B":
+            return MarketIndex.B;
+        case "C":
+            return MarketIndex.C;
+        case "D":
+            return MarketIndex.D;
+        case "E":
+            return MarketIndex.E;
+        case "?":
+        case "None":
+            return MarketIndex.None;
+        default:
+            throw new Error(`Неизвестный индекс рынка: ${str}`);
+    }
+}
 function parseCityRetailReport(html, url) {
     let $html = $(html);
     try {
@@ -3591,35 +3758,7 @@ function parseCityRetailReport(html, url) {
             throw new Error("Не получилось извлечь id товара из " + url);
         let id = nums[0];
         let indexStr = $tds.eq(2).text().trim();
-        let index = MarketIndex.None;
-        switch (indexStr) {
-            case "AAA":
-                index = MarketIndex.AAA;
-                break;
-            case "AA":
-                index = MarketIndex.AA;
-                break;
-            case "A":
-                index = MarketIndex.A;
-                break;
-            case "B":
-                index = MarketIndex.B;
-                break;
-            case "C":
-                index = MarketIndex.C;
-                break;
-            case "D":
-                index = MarketIndex.D;
-                break;
-            case "E":
-                index = MarketIndex.E;
-                break;
-            case "?":
-                index = MarketIndex.None;
-                break;
-            default:
-                throw new Error(`Неизвестный индекс рынка: ${indexStr}`);
-        }
+        let index = mIndexFromString(indexStr);
         let quant = numberfyOrError($tds.eq(4).text(), -1);
         let sellersCnt = numberfyOrError($tds.eq(6).text(), -1);
         let companiesCnt = numberfyOrError($tds.eq(8).text(), -1);
@@ -3737,6 +3876,56 @@ function parseTM(html, url) {
         throw err;
     }
 }
+/**
+ * Парсер отчета по производственным специализациям со страницы аналитических отчетов
+   /olga/main/mediareport
+ * @param html
+ * @param url
+ */
+function parseReportSpec(html, url) {
+    let $html = $(html);
+    try {
+        let $table = oneOrError($html, "table.list");
+        let $rows = $table.find("img").closest(".even, .odd"); // в каждой строке картинка товара, но картинки есть и в других местах
+        if ($rows.length < 5)
+            throw new Error(`найдено слишком мало(${$rows.length}) специализаций в отчете ${url}`);
+        let res = [];
+        $rows.each((i, el) => {
+            let $r = $(el);
+            let $tds = $r.children("td");
+            // спецуха
+            let $a = oneOrError($tds.eq(0), "a");
+            let spec = $a.text();
+            let n = extractIntPositive($a.attr("href"));
+            if (n == null || n.length != 1)
+                throw new Error("не нашли id завода " + spec);
+            let fid = n[0]; // id завода. есть товары которые на разных заводах можно делать а спецуха одинакова
+            // товар
+            let $img = oneOrError($tds.eq(1), "img");
+            let img = $img.attr("src");
+            let name = $img.attr("alt");
+            $a = $img.closest("a");
+            n = extractIntPositive($a.attr("href"));
+            if (n == null || n.length != 1)
+                throw new Error("не нашли id товара " + img);
+            let id = n[0];
+            // производство 
+            let units = numberfyOrError($tds.eq(2).text(), -1);
+            let quant = numberfyOrError(getInnerText($tds.get(3)), -1);
+            res.push({
+                product: { id: id, img: img, name: name },
+                specialization: spec,
+                factoryID: fid,
+                quantity: quant,
+                unitCount: units
+            });
+        });
+        return res;
+    }
+    catch (err) {
+        throw err;
+    }
+}
 function parseX(html, url) {
     //let $html = $(html);
     //try {
@@ -3836,13 +4025,12 @@ function exportInfo_async($place) {
         }
         let $txt = $('<textarea id="txtExport" style="display:block;width: 800px; height: 200px"></textarea>');
         let storedInfo = yield getDuties_async();
-        let exportStr = "city;img;ip;export;import" + "\n";
+        let exportStr = "country;region;city;img;ip;export;import" + "\n";
         // по всем городам и товарам пролетаем
-        for (let city in storedInfo) {
-            let dDict = storedInfo[city];
+        for (let [country, reg, city, dDict] of storedInfo) {
             for (let img in dDict) {
                 let duties = dDict[img];
-                let str = formatStr("{0};{1};{2};{3};{4}", city, img, duties.ip, duties.export, duties.import);
+                let str = formatStr("{0};{1};{2};{3};{4};{5};{6}", country.name, reg.name, city.name, img, duties.ip, duties.export, duties.import);
                 exportStr += str + "\n";
             }
         }
@@ -3904,7 +4092,7 @@ function getGeos_async() {
     });
 }
 /**
- * Возвращает словарь Город - Словарь<Таможенные пошлины>
+ * Возвращает Массив: Страна,Регион,Город, Словарь<Таможенные пошлины>
  */
 function getDuties_async() {
     return __awaiter(this, void 0, void 0, function* () {
@@ -3912,25 +4100,20 @@ function getDuties_async() {
         let geos = yield getGeos_async();
         // для каждого города берем его страну тащим таможню и сохраняем в спец словарь чтобы не повторяться
         let countryDict = {};
-        let resDict = {};
+        let resDict = [];
         for (let city in geos) {
-            let [country, ,] = geos[city];
-            if (countryDict[country.id] != null) {
-                resDict[city] = countryDict[country.id];
+            let [cntry, reg, cty] = geos[city];
+            if (countryDict[cntry.id] != null) {
+                resDict.push(countryDict[cntry.id]);
                 continue;
             }
-            let url = `/${Realm}/main/geo/countrydutylist/${country.id}`;
+            let url = `/${Realm}/main/geo/countrydutylist/${cntry.id}`;
             let html = yield tryGet_async(url);
             let dDict = parseCountryDuties(html, url);
-            countryDict[country.id] = dDict;
-            resDict[city] = dDict;
+            countryDict[cntry.id] = [cntry, reg, cty, dDict];
+            resDict.push([cntry, reg, cty, dDict]);
         }
         return resDict;
     });
-}
-function nullCheck(val) {
-    if (val == null)
-        throw new Error(`nullCheck Error`);
-    return val;
 }
 $(document).ready(() => run_async());
