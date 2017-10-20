@@ -7,7 +7,6 @@
 $ = jQuery = jQuery.noConflict(true);
 $xioDebug = true;
 let Realm = getRealmOrError();
-let CompanyId = getCompanyId();
 
 // упрощаем себе жисть, подставляем имя скрипта всегда в сообщении
 function log(msg: string, ...args: any[]) {
@@ -19,7 +18,7 @@ function log(msg: string, ...args: any[]) {
 
 async function run_async() {
 
-    let $header = oneOrError($(document), "div.metro_header_content");
+    let $header = oneOrError($(document), "div.metro_header");
 
     let $div = $("<div></div>");
     let $updateBtn = $("<input id='update' type='button' value='обновить'>");
@@ -79,9 +78,9 @@ async function exportInfo_async($place: JQuery) {
  */
 async function getGeos_async(): Promise<IDictionary<[ICountry, IRegion, ICity]>> {
 
-    let countries_tpl = `/${Realm}/main/common/main_page/game_info/bonuses/country`;
-    let regions_tpl = `/${Realm}/main/common/main_page/game_info/bonuses/region`;
-    let cities_tpl = `/${Realm}/main/common/main_page/game_info/bonuses/city`;
+    let countries_tpl = `/${Realm}/window/common/main_page/game_info/bonuses/country`;
+    let regions_tpl = `/${Realm}/window/common/main_page/game_info/bonuses/region`;
+    let cities_tpl = `/${Realm}/window/common/main_page/game_info/bonuses/city`;
 
     try {
         // сначала собираем данные по городам регионам отдельно

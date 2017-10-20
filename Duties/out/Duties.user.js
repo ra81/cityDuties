@@ -10,7 +10,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 // @name          Сбор таможни по всем городам
 // @namespace     virtonomica
 // @description   Проходит по всем городам и собирает таможенные пошлины по всем товарам включая ИЦ
-// @version       1.3
+// @version       1.4
 // @include       https://virtonomic*.**/*/main/geo/countrydutylist/*
 // @require       https://code.jquery.com/jquery-1.11.1.min.js
 // ==/UserScript==
@@ -301,11 +301,17 @@ function getRealmOrError() {
     return realm;
 }
 /**
- * Парсит id компании со страницы и выдает ошибку если не может спарсить
+ * Парсит id компании со страницы. Если не получилось то вернет null
  */
-function getCompanyId() {
-    let str = matchedOrError($("a.dashboard").attr("href"), /\d+/);
-    return numberfyOrError(str);
+function parseCompanyId(html) {
+    let $html = $(html);
+    let href = $html.find("a.dashboard").attr("href");
+    if (href == null || href.length <= 0)
+        return null;
+    let arr = href.match(/\d+/);
+    if (arr == null || arr.length !== 1)
+        return null;
+    return numberfyOrError(arr[0]);
 }
 /**
  * Оцифровывает строку. Возвращает всегда либо число или Number.POSITIVE_INFINITY либо -1 если str не содержит числа.
@@ -516,13 +522,40 @@ function sayMoney(num, symbol = "$") {
     return result;
 }
 /**
+ * Пробует взять со страницы тип юнита
+ * Сейчас эта хня берется из классов вида
+   <div class="picture bg-page-unit-header-kindergarten"></div>
+ * Он кореллирует четко с i-kindergarten в списке юнитов
+ * Если картинки на странице нет, то вернет null. Сам разбирайся почему ее там нет
+   Может выдать ошибку если тип не был найден в списке типов
+ * @param $html
+ */
+//function getUnitType($html: JQuery): UnitTypes | null {
+//    let $div = $html.find("div.picture");
+//    if ($div.length !== 1)
+//        return null;
+//    let typeStr = "";
+//    let classList = $div.attr("class").split(/\s+/);
+//    for (let cl of classList) {
+//        if (cl.startsWith("bg-page-unit-header-") == false)
+//            continue;
+//        // вырезаем тупо "bg-page-unit-header-"
+//        typeStr = cl.slice(20);
+//    }
+//    // некоторый онанизм с конверсией но никак иначе
+//    let type: UnitTypes = (UnitTypes as any)[typeStr] ? (UnitTypes as any)[typeStr] : UnitTypes.unknown;
+//    if (type == UnitTypes.unknown)
+//        throw new Error("Не описан тип юнита " + typeStr);
+//    return type;
+//}
+/**
  * Пробует взять со страницы картинку юнита и спарсить тип юнита
  * Пример сорса /img/v2/units/shop_1.gif  будет тип shop.
  * Он кореллирует четко с i-shop в списке юнитов
  * Если картинки на странице нет, то вернет null. Сам разбирайся почему ее там нет
  * @param $html
  */
-function getUnitType($html) {
+function getUnitTypeOld($html) {
     let $div = $html.find("#unitImage");
     if ($div.length === 0)
         return null;
@@ -562,33 +595,71 @@ function nullCheck(val) {
 // РЕГУЛЯРКИ ДЛЯ ССЫЛОК ------------------------------------
 // для 1 юнита
 // 
-let url_unit_rx = /\/[a-z]+\/(?:main|window)\/unit\/view\/\d+/i; // внутри юнита. любая страница
-let url_unit_main_rx = /\/\w+\/(?:main|window)\/unit\/view\/\d+\/?$/i; // главная юнита
-let url_unit_finance_report = /\/[a-z]+\/main\/unit\/view\/\d+\/finans_report(\/graphical)?$/i; // финанс отчет
-let url_trade_hall_rx = /\/[a-z]+\/main\/unit\/view\/\d+\/trading_hall\/?/i; // торговый зал
-let url_price_history_rx = /\/[a-z]+\/(?:main|window)\/unit\/view\/\d+\/product_history\/\d+\/?/i; // история продаж в магазине по товару
-let url_supply_rx = /\/[a-z]+\/main\/unit\/view\/\d+\/supply\/?/i; // снабжение
-let url_sale_rx = /\/[a-z]+\/main\/unit\/view\/\d+\/sale\/?/i; // продажа склад/завод
-let url_ads_rx = /\/[a-z]+\/main\/unit\/view\/\d+\/virtasement$/i; // реклама
-let url_education_rx = /\/[a-z]+\/window\/unit\/employees\/education\/\d+\/?/i; // обучение
-let url_supply_create_rx = /\/[a-z]+\/unit\/supply\/create\/\d+\/step2\/?$/i; // заказ товара в маг, или склад. в общем стандартный заказ товара
-let url_equipment_rx = /\/[a-z]+\/window\/unit\/equipment\/\d+\/?$/i; // заказ оборудования на завод, лабу или куда то еще
+//let url_unit_rx = /\/[a-z]+\/(?:main|window)\/unit\/view\/\d+/i;           // внутри юнита. любая страница
+//let url_unit_main_rx = /\/\w+\/(?:main|window)\/unit\/view\/\d+\/?$/i;     // главная юнита
+//let url_unit_finrep_rx = /\/[a-z]+\/main\/unit\/view\/\d+\/finans_report(\/graphical)?$/i; // финанс отчет
+//let url_unit_finrep_by_prod_rx = /\/[a-z]+\/(?:main|window)\/unit\/view\/\d+\/finans_report\/by_production\/?$/i; // финанс отчет по товарам
+//let url_trade_hall_rx = /\/[a-z]+\/main\/unit\/view\/\d+\/trading_hall\/?/i;    // торговый зал
+//let url_price_history_rx = /\/[a-z]+\/(?:main|window)\/unit\/view\/\d+\/product_history\/\d+\/?/i; // история продаж в магазине по товару
+//let url_supply_rx = /\/[a-z]+\/main\/unit\/view\/\d+\/supply\/?/i;    // снабжение
+//let url_sale_rx = /\/[a-z]+\/main\/unit\/view\/\d+\/sale\/?/i;        // продажа склад/завод
+//let url_ads_rx = /\/[a-z]+\/main\/unit\/view\/\d+\/virtasement$/i;  // реклама
+//let url_education_rx = /\/[a-z]+\/window\/unit\/employees\/education\/\d+\/?/i; // обучение
+//let url_supply_create_rx = /\/[a-z]+\/unit\/supply\/create\/\d+\/step2\/?$/i;  // заказ товара в маг, или склад. в общем стандартный заказ товара
+//let url_equipment_rx = /\/[a-z]+\/window\/unit\/equipment\/\d+\/?$/i;   // заказ оборудования на завод, лабу или куда то еще
 // для компании
 // 
-let url_unit_list_rx = /\/[a-z]+\/(?:main|window)\/company\/view\/\d+(\/unit_list)?(\/xiooverview|\/overview)?$/i; // список юнитов. Работает и для списка юнитов чужой компании
-let url_rep_finance_byunit = /\/[a-z]+\/main\/company\/view\/\d+\/finance_report\/by_units(?:\/.*)?$/i; // отчет по подразделениями из отчетов
-let url_rep_ad = /\/[a-z]+\/main\/company\/view\/\d+\/marketing_report\/by_advertising_program$/i; // отчет по рекламным акциям
-let url_manag_equip_rx = /\/[a-z]+\/window\/management_units\/equipment\/(?:buy|repair)$/i; // в окне управления юнитами групповой ремонт или закупка оборудования
-let url_manag_empl_rx = /\/[a-z]+\/main\/company\/view\/\d+\/unit_list\/employee\/?$/i; // управление - персонал
+//let url_unit_list_rx = /\/[a-z]+\/(?:main|window)\/company\/view\/\d+(\/unit_list)?(\/xiooverview|\/overview)?$/i;     // список юнитов. Работает и для списка юнитов чужой компании
+//let url_rep_finance_byunit = /\/[a-z]+\/main\/company\/view\/\d+\/finance_report\/by_units(?:\/.*)?$/i;  // отчет по подразделениями из отчетов
+//let url_rep_ad = /\/[a-z]+\/main\/company\/view\/\d+\/marketing_report\/by_advertising_program$/i;  // отчет по рекламным акциям
+//let url_manag_equip_rx = /\/[a-z]+\/window\/management_units\/equipment\/(?:buy|repair)$/i;     // в окне управления юнитами групповой ремонт или закупка оборудования
+//let url_manag_empl_rx = /\/[a-z]+\/main\/company\/view\/\d+\/unit_list\/employee\/?$/i;     // управление - персонал
 // для для виртономики
 // 
-let url_global_products_rx = /[a-z]+\/main\/globalreport\/marketing\/by_products\/\d+\/?$/i; // глобальный отчет по продукции из аналитики
-let url_products_rx = /\/[a-z]+\/main\/common\/main_page\/game_info\/products$/i; // страница со всеми товарами игры
-let url_trade_products_rx = /\/[a-z]+\/main\/common\/main_page\/game_info\/trading$/i; // страница с торгуемыми товарами
-let url_city_retail_report_rx = /\/[a-z]+\/(?:main|window)\/globalreport\/marketing\/by_trade_at_cities\/\d+/i; // розничный отчет по конкретному товару
-let url_products_size_rx = /\/[a-z]+\/main\/industry\/unit_type\/info\/2011\/volume\/?/i; // размеры продуктов на склада
-let url_country_duties_rx = /\/[a-z]+\/main\/geo\/countrydutylist\/\d+\/?/i; // таможенные пошлины и ИЦ
-let url_tm_info_rx = /\/[a-z]+\/main\/globalreport\/tm\/info/i; // брендовые товары список
+//let url_global_products_rx = /[a-z]+\/main\/globalreport\/marketing\/by_products\/\d+\/?$/i; // глобальный отчет по продукции из аналитики
+//let url_products_rx = /\/[a-z]+\/main\/common\/main_page\/game_info\/products$/i;   // страница со всеми товарами игры
+//let url_trade_products_rx = /\/[a-z]+\/main\/common\/main_page\/game_info\/trading$/i;   // страница с торгуемыми товарами
+//let url_city_retail_report_rx = /\/[a-z]+\/(?:main|window)\/globalreport\/marketing\/by_trade_at_cities\/\d+/i; // розничный отчет по конкретному товару
+//let url_products_size_rx = /\/[a-z]+\/main\/industry\/unit_type\/info\/2011\/volume\/?/i;  // размеры продуктов на склада
+//let url_country_duties_rx = /\/[a-z]+\/main\/geo\/countrydutylist\/\d+\/?/i;    // таможенные пошлины и ИЦ
+// let url_tm_info_rx = /\/[a-z]+\/main\/globalreport\/tm\/info/i;    // брендовые товары список
+let Url_rx = {
+    // для виртономики
+    v_city_retail_report: /\/[a-z]+\/(?:main|window)\/globalreport\/marketing\/by_trade_at_cities\/\d+/i,
+    v_tm_info: /\/[a-z]+\/(?:main|window)\/globalreport\/tm\/info\/?$/i,
+    v_country_duties: /\/[a-z]+\/(?:main|window)\/geo\/countrydutylist\/\d+\/?/i,
+    v_regions: /\/[a-z]+\/(?:main|window)\/common\/main_page\/game_info\/bonuses\/region\/?$/i,
+    v_countries: /\/[a-z]+\/(?:main|window)\/common\/main_page\/game_info\/bonuses\/country\/?$/i,
+    v_cities: /\/[a-z]+\/(?:main|window)\/common\/main_page\/game_info\/bonuses\/city\/?$/i,
+    v_products_size: /\/[a-z]+\/(?:main|window)\/industry\/unit_type\/info\/2011\/volume\/?/i,
+    v_media_rep_spec: /\/[a-z]+\/(?:main|window)\/mediareport\/\d+/i,
+    v_global_products: /[a-z]+\/main\/globalreport\/marketing\/by_products\/\d+\/?$/i,
+    v_products: /\/[a-z]+\/(?:main|window)\/common\/main_page\/game_info\/products$/i,
+    v_trade_products: /\/[a-z]+\/(?:main|window)\/common\/main_page\/game_info\/trading$/i,
+    v_energy_price: /\/[a-z]+\/(?:main|window)\/geo\/tariff\/\d+/i,
+    v_product_suppliers: /\/[a-z]+\/(?:main|window)\/globalreport\/marketing\/by_products\/\d+\/?$/i,
+    // для компании в целом
+    top_manager: /\/[a-z]+\/(?:main|window)\/user\/privat\/persondata\/knowledge\/?$/ig,
+    comp_ads_rep: /\/[a-z]+\/(?:main|window)\/company\/view\/\d+\/marketing_report\/by_advertising_program\/?$/i,
+    comp_fin_rep_byunit: /\/[a-z]+\/(?:main|window)\/company\/view\/\d+\/finance_report\/by_units(?:\/.*)?$/i,
+    comp_unit_list: /\/[a-z]+\/(?:main|window)\/company\/view\/\d+(\/unit_list)?(\/xiooverview|\/overview)?$/i,
+    comp_manage_salary: /\/[a-z]+\/(?:main|window)\/company\/view\/\d+\/unit_list\/employee\/salary\/?$/i,
+    // для юнита
+    unit_any: /\/[a-z]+\/(?:main|window)\/unit\/view\/\d+/i,
+    unit_main: /\/[a-z]+\/main\/unit\/view\/\d+\/?$/i,
+    unit_ads: /\/[a-z]+\/(?:main|window)\/unit\/view\/\d+\/virtasement\/?$/i,
+    unit_salary: /\/[a-z]+\/window\/unit\/employees\/engage\/\d+\/?$/ig,
+    unit_sale: /\/[a-z]+\/(?:main|window)\/unit\/view\/\d+\/sale\/?/i,
+    unit_supply: /\/[a-z]+\/(?:main|window)\/unit\/view\/\d+\/supply\/?/i,
+    unit_supply_create: /\/[a-z]+\/unit\/supply\/create\/\d+\/step2\/?$/i,
+    unit_trade_hall: /\/[a-z]+\/(?:main|window)\/unit\/view\/\d+\/trading_hall\/?/i,
+    unit_retail_price_history: /\/[a-z]+\/(?:main|window)\/unit\/view\/\d+\/product_history\/\d+\/?/i,
+    unit_education: /\/[a-z]+\/window\/unit\/employees\/education\/\d+\/?/i,
+    unit_ware_resize: /\/[a-z]+\/window\/unit\/upgrade\/\d+\/?$/i,
+    unit_ware_change_spec: /\/[a-z]+\/window\/unit\/speciality_change\/\d+\/?$/i,
+    unit_finrep: /\/[a-z]+\/(?:main|window)\/unit\/view\/\d+\/finans_report(\/graphical)?$/i,
+    unit_finrep_by_prod: /\/[a-z]+\/(?:main|window)\/unit\/view\/\d+\/finans_report\/by_production\/?$/i,
+};
 /**
  * По заданной ссылке и хтмл определяет находимся ли мы внутри юнита или нет.
  * Если на задавать ссылку и хтмл то берет текущий документ.
@@ -604,7 +675,26 @@ function isUnit(urlPath, $html, my = true) {
     }
     // для ситуации когда мы внутри юнита характерно что всегда ссылка вида 
     // https://virtonomica.ru/olga/main/unit/view/6452212/*
-    let urlOk = url_unit_rx.test(urlPath);
+    let urlOk = Url_rx.unit_any.test(urlPath);
+    if (!urlOk)
+        return false;
+    // но у своего юнита есть слева в табах стрелочка со ссылью на компанию с тем же айди что и ссыль на дашборду. А для чужого нет ее и табов
+    let urlCompany = nullCheck($html.find("a[data-name='itour-tab-company-view'").attr("href"));
+    //let urlOffice = $html.find("div.officePlace a").attr("href");
+    let urlDash = nullCheck($html.find("a.dashboard").attr("href"));
+    if (urlCompany.length === 0 || urlDash.length === 0)
+        throw new Error("Ссылка на юзерлист или дашборду не может быть найдена");
+    let isMy = (`${urlCompany}/dashboard` === urlDash);
+    return my ? isMy : !isMy;
+}
+function isUnitOld(urlPath, $html, my = true) {
+    if (!urlPath || !$html) {
+        urlPath = document.location.pathname;
+        $html = $(document);
+    }
+    // для ситуации когда мы внутри юнита характерно что всегда ссылка вида 
+    // https://virtonomica.ru/olga/main/unit/view/6452212/*
+    let urlOk = Url_rx.unit_any.test(urlPath);
     if (!urlOk)
         return false;
     // но у своего юнита ссыль на офис имеет тот же айди что и ссыль на дашборду. А для чужого нет
@@ -621,11 +711,11 @@ function isUnit(urlPath, $html, my = true) {
  */
 function isMyUnitList() {
     // для своих и чужих компани ссылка одна, поэтому проверяется и id
-    if (url_unit_list_rx.test(document.location.pathname) === false)
+    if (Url_rx.comp_unit_list.test(document.location.pathname) === false)
         return false;
     // запрос id может вернуть ошибку если мы на window ссылке. значит точно у чужого васи
     try {
-        let id = getCompanyId();
+        let id = nullCheck(parseCompanyId(document));
         let urlId = extractIntPositive(document.location.pathname); // полюбому число есть иначе регекс не пройдет
         if (urlId[0] != id)
             return false;
@@ -641,11 +731,11 @@ function isMyUnitList() {
  */
 function isOthersUnitList() {
     // для своих и чужих компани ссылка одна, поэтому проверяется и id
-    if (url_unit_list_rx.test(document.location.pathname) === false)
+    if (Url_rx.comp_unit_list.test(document.location.pathname) === false)
         return false;
     try {
         // для чужого списка будет разный айди в дашборде и в ссылке
-        let id = getCompanyId();
+        let id = nullCheck(parseCompanyId(document));
         let urlId = extractIntPositive(document.location.pathname); // полюбому число есть иначе регекс не пройдет
         if (urlId[0] === id)
             return false;
@@ -657,7 +747,7 @@ function isOthersUnitList() {
     return true;
 }
 function isUnitMain(urlPath, html, my = true) {
-    let ok = url_unit_main_rx.test(urlPath);
+    let ok = Url_rx.unit_main.test(urlPath);
     if (!ok)
         return false;
     let hasTabs = $(html).find("ul.tabu").length > 0;
@@ -674,10 +764,10 @@ function isUnitMain(urlPath, html, my = true) {
 //    return ok;
 //}
 function isUnitFinanceReport() {
-    return url_unit_finance_report.test(document.location.pathname);
+    return Url_rx.unit_finrep.test(document.location.pathname);
 }
 function isCompanyRepByUnit() {
-    return url_rep_finance_byunit.test(document.location.pathname);
+    return Url_rx.comp_fin_rep_byunit.test(document.location.pathname);
 }
 /**
  * Возвращает Истину если данная страница есть страница в магазине своем или чужом. Иначе Ложь
@@ -1082,6 +1172,24 @@ function getRepageUrl($html, pages = 10000) {
     let num = $pager.text().trim();
     return $pager.find('a').attr('href').replace(num, pages.toString());
 }
+/**
+ * Производит обрезку словаря (где ключи это строковые даты) до нужного числа ключей. Если ключи НЕ даты то даст ошибку.
+   Если обрезать нечего то ничего не делает.
+ * @param dict словарь который БУДЕТ изменен и удалены лишние самые старые элементы. shortDate: T
+ * @param maxItems максимальное число самых последних дат которые оставить
+ */
+function trimDateDict(dict, maxItems) {
+    // удалим лишние оставив maxItems дней истории
+    if (Object.keys(dict).length <= maxItems)
+        return;
+    let delDates = Object.keys(dict)
+        .map(v => dateFromShort(v))
+        .sort((a, b) => b.getDate() - a.getTime())
+        .map(v => dateToShort(v))
+        .slice(maxItems);
+    for (let d of delDates)
+        delete dict[d];
+}
 // SAVE & LOAD ------------------------------------
 /**
  * По заданным параметрам создает уникальный ключик использую уникальный одинаковый по всем скриптам префикс
@@ -1103,6 +1211,28 @@ function buildStoreKey(realm, code, subid) {
         res += "_" + subid;
     res += "_" + code;
     return res;
+}
+/**
+ * Заданный стандартный ключик хранилища разбивает на компоненты. Конечно учитывает что некоторые элементы
+   могут отсутствовать. например нет subid или даже реалма. В общем разбивка согласуется с билдером ключей
+ * @param key
+ */
+function splitStoreKey(key) {
+    if (key.length <= 0)
+        throw new Error("Длина ключа должны быть больше 0");
+    // допустимые варианты ключей исходя из билдера ключей
+    // ^*_rm
+    // ^*_olga_rm
+    // ^*_olga_1234_rm
+    let rx = /^\^\*_(?:([a-z]+)_){0,1}(?:(\d+)_){0,1}([a-z]+){1}$/i;
+    let res = rx.exec(key);
+    if (res == null)
+        throw new Error(`Строка ${key} не является допустимым ключем хранилища.`);
+    // так как часть групп может отсутствовать то в выходном массиве в этих местах будет undefined
+    let realm = res[1] == null ? null : res[1].trim();
+    let subid = res[2] == null ? null : parseInt(res[2]);
+    let code = res[3].trim();
+    return [realm, subid, code];
 }
 /**
  * Возвращает все ключи ЮНИТОВ для заданного реалма и КОДА.
@@ -1278,6 +1408,12 @@ function ImportA($place, converter, delim = "\n") {
 // Сюда все функции которые парсят данные со страниц
 //
 /**
+ * Определяет что данная страница открыта в режиме window то есть без шапки
+ */
+function isWindow($html, url) {
+    return url.indexOf("/window/") > 0;
+}
+/**
  * По пути картинки выявляется ТМ товар или нет. Обычно в ТМ у нас есть /brand/ кусок
  * @param product
  */
@@ -1327,7 +1463,9 @@ function parseAllSavedSubid(realm) {
 function parseUnitList(html, url) {
     let $html = $(html);
     try {
-        let $table = $html.find("table.unit-list-2014");
+        let $table = isWindow($html, url)
+            ? $html.filter("table.unit-list-2014")
+            : $html.find("table.unit-list-2014");
         let res = {};
         let $rows = closestByTagName($table.find("td.unit_id"), "tr");
         if ($rows.length === 0)
@@ -1350,6 +1488,7 @@ function parseUnitList(html, url) {
             res[subid] = {
                 subid: subid,
                 type: type,
+                typeStr: UnitTypes[type],
                 name: name,
                 size: size,
                 city: city
@@ -1607,11 +1746,15 @@ var SalePolicies;
  * @param html
  * @param url
  */
-function parseSaleNew(html, url) {
+function parseUnitSaleNew(html, url) {
     let $html = $(html);
     try {
+        let $form = isWindow($html, url)
+            ? $html.filter("form[name=storageForm]")
+            : $html.find("form[name=storageForm]");
+        if ($form.length <= 0)
+            throw new Error("Не найдена форма.");
         let $tbl = oneOrError($html, "table.grid");
-        let $form = $html.find("form[name=storageForm]");
         let $rows = closestByTagName($tbl.find("select[name*='storageData']"), "tr");
         let dict = {};
         $rows.each((i, el) => {
@@ -1705,19 +1848,23 @@ function parseSaleNew(html, url) {
 //    }
 //}
 /**
- * Парсинг данных по страницы /main/unit/view/8004742/virtasement
- * @param html
- * @param url
+ * Парсинг данных по страницы
+   /main/unit/view/8004742/virtasement
+   /window/unit/view/8004742/virtasement
  */
-function parseAds(html, url) {
+function parseUnitAds(html, url) {
     let $html = $(html);
     try {
         // известность
         let _celebrity = numberfyOrError($html.find(".infoblock tr:eq(0) td:eq(1)").text(), -1);
         // население города
         let _pop = (() => {
+            // для window у нас чуть иначе поиск
+            let scriptTxt = isWindow($html, url)
+                ? $html.filter("script").text()
+                : $html.find("script").text();
             // если регулярка сработала значит точно нашли данные
-            let m = execOrError($html.find("script").text(), /params\['population'\] = (\d+);/i);
+            let m = execOrError(scriptTxt, /params\['population'\] = (\d+);/i);
             return numberfyOrError(m[1], 0);
         })();
         // текущий бюджет, он может быть и 0
@@ -1736,7 +1883,7 @@ function parseAds(html, url) {
         };
     }
     catch (err) {
-        throw new ParseError("ads", url, err);
+        throw err;
     }
 }
 /**
@@ -1744,7 +1891,7 @@ function parseAds(html, url) {
  * @param html
  * @param url
  */
-function parseSalary(html, url) {
+function parseUnitSalary(html, url) {
     let $html = $(html);
     try {
         let _form = $html.filter("form");
@@ -1787,7 +1934,7 @@ function parseSalary(html, url) {
  * @param html
  * @param url
  */
-function parseEducation(html, url) {
+function parseUnitEducation(html, url) {
     let $html = $(html);
     try {
         // формы может не быть если обучение уже запущено
@@ -2136,6 +2283,11 @@ function parseUnitMain(html, url) {
         throw err; // new ParseError("unit main page", url, err);
     }
 }
+// названия инноваций
+let InnovationNames = {
+    Parking: "Автомобильная парковка",
+    PRAgent: "Партнёрский договор с рекламным агентством"
+};
 function parseUnitMainNew(html, url) {
     let $html = $(html);
     try {
@@ -2146,7 +2298,7 @@ function parseUnitMainNew(html, url) {
             case UnitTypes.warehouse:
                 return $.extend({}, mainBase, ware(mainBase.size));
             case UnitTypes.shop:
-                return $.extend({}, mainBase, shop());
+                return $.extend({}, mainBase, shop(mainBase));
             case UnitTypes.fuel:
                 return $.extend({}, mainBase, fuel());
             default:
@@ -2159,6 +2311,45 @@ function parseUnitMainNew(html, url) {
     // юнит, img, эффективность
     function base() {
         // subid 
+        let n = extractIntPositive(url);
+        if (n == null)
+            throw new Error(`на нашел subid юнита в ссылке ${url}`);
+        let subid = n[0];
+        // 
+        let $header = oneOrError($html, "div.headern");
+        let [name, city] = parseUnitNameCity($header);
+        // 
+        let type = parseUnitType($header);
+        let size = parseUnitSize($header);
+        // эффективность может быть "не известна" для новых юнитов значит не будет прогресс бара
+        let $td = $html.find("table.infoblock tr:contains('Эффективность работы') td.progress_bar").next("td");
+        let eff = $td.length > 0 ? numberfyOrError($td.text(), -1) : 0;
+        // инновации
+        let innov = [];
+        let $slots = $html.find("div.artf_slots"); // может отсутствовать вовсе если нет инноваций
+        if ($slots.length > 0) {
+            $slots.find("img[src^='/pub/artefact/']").each((i, el) => {
+                let $img = $(el);
+                // обычно выглядит так: Маркетинг / Автомобильная парковка
+                let title = $img.attr("title");
+                let items = title.split("/");
+                let name = nullCheck(items[items.length - 1]).trim();
+                innov.push(name);
+            });
+        }
+        return {
+            subid: subid,
+            name: name,
+            type: type,
+            typeStr: UnitTypes[type],
+            size: size,
+            city: city,
+            efficiency: eff,
+            innovations: innov
+        };
+    }
+    function baseOld() {
+        // subid 
         let $a = oneOrError($html, "a[data-name='itour-tab-unit-view']");
         let n = extractIntPositive($a.attr("href"));
         if (n == null)
@@ -2166,7 +2357,7 @@ function parseUnitMainNew(html, url) {
         let subid = n[0];
         // city
         // "    Расположение: Великие Луки ("
-        let lines = getOnlyText(oneOrError($html, "div.officePlace"));
+        let lines = getOnlyText(oneOrError($html, "div.office_place"));
         let arr = execOrError(lines[1].trim(), /^расположение:(.*)\(/i);
         //let city = lines[1].split(":")[1].split("(")[0].trim();
         let city = arr[1].trim();
@@ -2191,14 +2382,29 @@ function parseUnitMainNew(html, url) {
         // эффективность может быть "не известна" для новых юнитов значит не будет прогресс бара
         let $td = $html.find("table.infoblock tr:contains('Эффективность работы') td.progress_bar").next("td");
         let eff = $td.length > 0 ? numberfyOrError($td.text(), -1) : 0;
+        // инновации
+        let innov = [];
+        let $slots = $html.find("div.artf_slots"); // может отсутствовать вовсе если нет инноваций
+        if ($slots.length > 0) {
+            $slots.find("img[src^='/pub/artefact/']").each((i, el) => {
+                let $img = $(el);
+                // обычно выглядит так: Маркетинг / Автомобильная парковка
+                let title = $img.attr("title");
+                let items = title.split("/");
+                let name = nullCheck(items[items.length - 1]).trim();
+                innov.push(name);
+            });
+        }
         return {
             subid: subid,
             name: name,
             type: type,
             size: size,
             city: city,
-            img: img,
-            efficiency: eff
+            //img: img,
+            typeStr: UnitTypes[type],
+            efficiency: eff,
+            innovations: innov
         };
     }
     function ware(size) {
@@ -2270,7 +2476,7 @@ function parseUnitMainNew(html, url) {
             dashboard: dict
         };
     }
-    function shop() {
+    function shop(base) {
         let $info = $html.find("table.infoblock"); // Район города  Расходы на аренду
         // общая инфа
         let place = $info.find("td.title:contains(Район города)").next("td").text().split(/\s+/)[0].trim();
@@ -2300,7 +2506,9 @@ function parseUnitMainNew(html, url) {
             departments: depts,
             employees: { employees: employees, required: employeesReq, efficiency: employeesEff, holidays: inHoliday },
             service: service,
-            visitors: visitors
+            visitors: visitors,
+            haveParking: isOneOf(InnovationNames.Parking, base.innovations),
+            havePR: isOneOf(InnovationNames.PRAgent, base.innovations)
         };
     }
     function fuel() {
@@ -2477,6 +2685,70 @@ function parseUnitMainNew(html, url) {
     }
 }
 /**
+ * В переданном хтмл пробует спарсить Имя юнита и Город расположения. Возвращает в таком же порядке
+ * @param $html полная страница или хедер
+ */
+function parseUnitNameCity($html) {
+    let x;
+    // name
+    let name = oneOrError($html, "div.title:first h1").text().trim();
+    if (name == null || name.length < 1)
+        throw new Error(`не найдено имя юнита`);
+    // city
+    // Нижний Новгород (Россия, Поволжье)	
+    let m = getOnlyText(oneOrError($html, "div.title:first"))[1].trim().match(/^(.*)\(/i);
+    if (m == null || m[1] == null || m[1].length <= 1)
+        throw new Error(`не найден город юнита ${name}`);
+    let city = m[1].trim();
+    return [name, city];
+}
+/**
+ * В переданном коде пробует спарсить размер юнита
+ * @param $html полная страница или хедер
+ */
+function parseUnitSize($html) {
+    // классы откуда можно дернуть тип юнита грузятся скриптом уже после загрузки страницц
+    // и добавляются в дивы. Поэтому берем скрипт который это делает и тащим из него информацию
+    let lines = $html.find("div.title script").text().split(/\n/);
+    let rx = /\bbg-image\b.*?\bbgunit-.*?(\d+)\b/i;
+    let size = 0;
+    for (let line of lines) {
+        let arr = rx.exec(line);
+        if (arr != null && arr[1] != null) {
+            size = numberfyOrError(arr[1]);
+            break;
+        }
+    }
+    if (size <= 0)
+        throw new Error("Невозможно спарсить размер юнита.");
+    return size;
+}
+/**
+ * С переданного хтмл пробует парсить тип юнита. Если
+ * @param $html полная страница или хедер
+ */
+function parseUnitType($html) {
+    // классы откуда можно дернуть тип юнита грузятся скриптом уже после загрузки страницц
+    // и добавляются в дивы. Поэтому берем скрипт который это делает и тащим из него информацию
+    let lines = $html.find("div.title script").text().split(/\n/);
+    let rx = /\bbody\b.*?\bbg-page-unit-(.*)\b/i;
+    let typeStr = "";
+    for (let line of lines) {
+        let arr = rx.exec(line);
+        if (arr != null && arr[1] != null) {
+            typeStr = arr[1];
+            break;
+        }
+    }
+    if (typeStr.length <= 0)
+        throw new Error("Невозможно спарсить тип юнита");
+    // некоторый онанизм с конверсией но никак иначе
+    let type = UnitTypes[typeStr] ? UnitTypes[typeStr] : UnitTypes.unknown;
+    if (type == UnitTypes.unknown)
+        throw new Error("Не описан тип юнита " + typeStr);
+    return type;
+}
+/**
  * /lien/main/unit/view/4152881/finans_report
  * @param html
  * @param url
@@ -2517,6 +2789,42 @@ function parseUnitFinRep(html, url) {
     }
 }
 /**
+ * Финансовый отчет по товарам для магазина/заправки
+   /olga/window/unit/view/6885676/finans_report/by_production
+ * @param html
+ * @param url
+ */
+function parseUnitFinRepByProd(html, url) {
+    let $html = $(html);
+    try {
+        let res = {};
+        // для магазов где нет торговли будет пустая страница и ничего не будет
+        // для window таблица идет без парент тега надо искать иначе
+        let $tbl = $html.filter("table.grid");
+        if ($tbl.length <= 0)
+            $tbl = $html.find("table.grid");
+        if ($tbl.length <= 0)
+            return res;
+        if ($tbl.length > 1)
+            throw new Error("Нашли 2 таблицы table.grid вместо 1");
+        let $rows = $tbl.find("tr.even, tr.odd");
+        $rows.each((i, el) => {
+            let $r = $(el);
+            let $tds = $r.children("td");
+            let img = oneOrError($r, "img").attr("src");
+            let sold = numberfyOrError($tds.eq(1).text(), -1);
+            let turn = numberfyOrError($tds.eq(2).text(), -1);
+            let prime = numberfyOrError($tds.eq(3).text(), -1);
+            res[img] = [sold, turn, prime];
+        });
+        return res;
+    }
+    catch (err) {
+        logDebug(`error on ${url}`);
+        throw err;
+    }
+}
+/**
  * Чисто размер складов вида https://virtonomica.ru/fast/window/unit/upgrade/8006972
  * @param html
  * @param url
@@ -2548,46 +2856,6 @@ function parseWareResize(html, url) {
     }
     catch (err) {
         throw new ParseError("ware size", url, err);
-    }
-}
-/**
- * Главная страница склада аналогично обычной главной юнита /main/unit/view/ + subid
- * @param html
- * @param url
- */
-function parseWareMain(html, url) {
-    let $html = $(html);
-    try {
-        if ($html.find("#unitImage img").attr("src").indexOf("warehouse") < 0)
-            throw new Error("Это не склад!");
-        let _size = $html.find(".infoblock td:eq(1)").map((i, e) => {
-            let txt = $(e).text();
-            let sz = numberfyOrError(txt);
-            if (txt.indexOf("тыс") >= 0)
-                sz *= 1000;
-            if (txt.indexOf("млн") >= 0)
-                sz *= 1000000;
-            return sz;
-        }).get();
-        let _full = (() => {
-            let f = $html.find("[nowrap]:eq(0)").text().trim();
-            if (f === "")
-                throw new Error("ware full not found");
-            return numberfy(f);
-        })();
-        let _product = $html.find(".grid td:nth-child(1)").map((i, e) => $(e).text()).get();
-        let _stock = $html.find(".grid td:nth-child(2)").map((i, e) => numberfy($(e).text())).get();
-        let _shipments = $html.find(".grid td:nth-child(6)").map((i, e) => numberfy($(e).text())).get();
-        return {
-            size: _size,
-            full: _full,
-            product: _product,
-            stock: _stock,
-            shipments: _shipments
-        };
-    }
-    catch (err) {
-        throw new ParseError("ware main", url, err);
     }
 }
 /**
@@ -2717,8 +2985,9 @@ function parseWareSupply(html, url) {
                 contracts.push({
                     offer: {
                         id: offerID,
-                        unit: { subid: subid, type: UnitTypes.unknown, name: unitName, size: 0, city: "" },
+                        unit: { subid: subid, type: UnitTypes.unknown, typeStr: "unknown", name: unitName, size: 0, city: "" },
                         maxLimit: maxLimit > 0 ? maxLimit : null,
+                        origPrice: null,
                         stock: {
                             available: available,
                             total: total,
@@ -2742,7 +3011,9 @@ function parseWareSupply(html, url) {
             res.push([product, contracts]);
         });
         // парсинг товаров внизу на которые заказов нет
-        let $items = $html.find("div.add_contract");
+        let $items = isWindow($html, url)
+            ? $html.filter("div.add_contract")
+            : $html.find("div.add_contract");
         let arr = [];
         $items.each((i, el) => {
             let $div = $(el);
@@ -2795,10 +3066,13 @@ function parseWareChangeSpec(html, url) {
  * @param html
  * @param url
  */
-function parseProductReport(html, url) {
+function parseProductSuppliers(html, url) {
     let $html = $(html);
     try {
-        let $rows = $html.find(".grid").find("tr.odd, tr.even");
+        let $tbl = isWindow($html, url)
+            ? $html.filter("table.grid")
+            : $html.find("table.grid");
+        let $rows = $tbl.find("tr.odd, tr.even");
         // Макс ограничение на контракт. -1 если без.
         let _max = $rows.find("td.nowrap:nth-child(2)").map((i, e) => {
             let $span = $(e).find("span");
@@ -2836,63 +3110,6 @@ function parseProductReport(html, url) {
     }
     catch (err) {
         throw new ParseError("product report", url, err);
-    }
-}
-/**
- * "/"+realm+"/main/company/view/"+companyid+"/unit_list/employee/salary"
- * @param html
- * @param url
- */
-function parseEmployees(html, url) {
-    let $html = $(html);
-    try {
-        let $rows = $html.find("table.list").find(".u-c").map((i, e) => $(e).closest("tr").get());
-        let _id = $rows.find(":checkbox").map((i, e) => numberfyOrError($(e).val())).get();
-        // может быть 0 в принципе
-        let _salary = $rows.find("td:nth-child(7)").map((i, e) => {
-            let txt = getInnerText(e).trim();
-            if (txt.length === 0)
-                throw new Error("salary not found");
-            return numberfy(txt);
-        }).get();
-        // не может быть 0
-        let _salaryCity = $rows.find("td:nth-child(8)").map((i, e) => {
-            let txt = getInnerText(e).trim(); // тут низя удалять ничо. внутри какой то инпут сраный и в нем текст
-            if (txt.length === 0)
-                throw new Error("salary city not found");
-            return numberfyOrError(txt);
-        }).get();
-        // может быть 0
-        let _skill = $rows.find("td:nth-child(9)").map((i, e) => {
-            let txt = $(e).text().trim(); // может быть a тег внутри. поэтому просто текст.
-            if (txt.length === 0)
-                throw new Error("skill not found");
-            return numberfy(txt);
-        }).get();
-        let _skillRequired = $rows.find("td:nth-child(10)").map((i, e) => {
-            let txt = $(e).text().trim(); // может быть a тег внутри. поэтому просто текст.
-            if (txt.length === 0)
-                throw new Error("skill not found");
-            return numberfy(txt);
-        }).get();
-        let _onHoliday = $rows.find("td:nth-child(11)").map((i, e) => !!$(e).find(".in-holiday").length).get();
-        // может отсутстовать если мы в отпуске -1 будет
-        let _efficiency = $rows.find("td:nth-child(11)").map((i, e) => {
-            let txt = getInnerText(e).trim();
-            return numberfy(txt || "-1");
-        }).get();
-        return {
-            id: _id,
-            salary: _salary,
-            salaryCity: _salaryCity,
-            skill: _skill,
-            skillRequired: _skillRequired,
-            onHoliday: _onHoliday,
-            efficiency: _efficiency
-        };
-    }
-    catch (err) {
-        throw new ParseError("ware size", url, err);
     }
 }
 function parseTradeHallOld(html, url) {
@@ -2947,10 +3164,13 @@ function parseTradeHallOld(html, url) {
  * @param html
  * @param url
  */
-function parseTradeHall(html, url) {
+function parseUnitTradeHall(html, url) {
     let $html = $(html);
     try {
-        let str = oneOrError($html, "table.list").find("div").eq(0).text().trim();
+        let $tbl = isWindow($html, url)
+            ? $html.filter("table.list")
+            : $html.find("table.list");
+        let str = oneOrError($tbl, "div:first").text().trim();
         let filling = numberfyOrError(str, -1);
         let $rows = closestByTagName($html.find("a.popup"), "tr");
         let thItems = [];
@@ -3194,8 +3414,9 @@ function parseRetailSupplyNew(html, url) {
                 return {
                     offer: {
                         id: offerID,
-                        unit: { subid: subid, type: UnitTypes.unknown, name: unitName, size: 0, city: "" },
+                        unit: { subid: subid, type: UnitTypes.unknown, typeStr: "unknown", name: unitName, size: 0, city: "" },
                         maxLimit: maxLimit > 0 ? maxLimit : null,
+                        origPrice: null,
                         stock: {
                             available: available,
                             total: total,
@@ -3355,20 +3576,21 @@ function parseCities(html, url) {
 }
 /**
  * Со странички пробуем спарсить игровую дату. А так как дата есть почти везде, то можно почти везде ее спарсить
- * Вывалит ошибку если не сможет спарсить дату со странички
+ * Если дату не вышло содрать то вернет null
  * @param html
- * @param url
  */
-function parseGameDate(html, url) {
+function parseGameDate(html) {
     let $html = $(html);
     try {
         // вытащим текущую дату, потому как сохранять данные будем используя ее
         let $date = $html.find("div.date_time");
         if ($date.length !== 1)
-            throw new Error("Не получилось получить текущую игровую дату");
+            return null;
+        //throw new Error("Не получилось получить текущую игровую дату");
         let currentGameDate = extractDate(getOnlyText($date)[0].trim());
         if (currentGameDate == null)
-            throw new Error("Не получилось получить текущую игровую дату");
+            return null;
+        //throw new Error("Не получилось получить текущую игровую дату");
         return currentGameDate;
     }
     catch (err) {
@@ -3381,14 +3603,7 @@ function parseGameDate(html, url) {
  * @param url
  */
 function parseManageEmployees(html, url) {
-    if (html == null)
-        throw new Error("страница пуста. парсить нечего");
     let $html = $(html);
-    function getOrError(n) {
-        if (n == null)
-            throw new Error("Argument is null");
-        return n;
-    }
     try {
         let $rows = $html.find("tr").has("td.u-c");
         let units = {};
@@ -3435,11 +3650,13 @@ function parseManageEmployees(html, url) {
  * @param html
  * @param url
  */
-function parseReportAdvertising(html, url) {
+function parseCompAdsReport(html, url) {
     let $html = $(html);
     try {
         // заберем таблицы по сервисам и по торговле, а рекламу офисов не будем брать. числануть тока по шапкам
-        let $tbls = $html.find("table.grid").has("th:contains('Город')");
+        let $tbls = isWindow($html, url)
+            ? $html.filter("table.grid").has("th:contains('Город')")
+            : $html.find("table.grid").has("th:contains('Город')");
         let $rows = $tbls.find("tr").has("a[href*='unit']"); // отсекаем шапку оставляем тока чистые
         let units = {};
         $rows.each((i, e) => {
@@ -3482,7 +3699,10 @@ function parseReportAdvertising(html, url) {
 function parseProducts(html, url) {
     let $html = $(html);
     try {
-        let $items = $html.find("table.list").find("a").has("img");
+        let $tbl = isWindow($html, url)
+            ? $html.filter("table.list")
+            : $html.find("table.list");
+        let $items = $tbl.find("a").has("img");
         if ($items.length === 0)
             throw new Error("не смогли найти ни одного продукта на " + url);
         let dict = {};
@@ -3512,7 +3732,9 @@ function parseProducts(html, url) {
 function parseFinanceRepByUnits(html, url) {
     let $html = $(html);
     try {
-        let $grid = $html.find("table.grid");
+        let $grid = isWindow($html, url)
+            ? $html.filter("table.grid")
+            : $html.find("table.grid");
         if ($grid.length === 0)
             throw new Error("Не найдена таблица с юнитами.");
         let $rows = closestByTagName($grid.find("img[src*='unit_types']"), "tr");
@@ -3554,8 +3776,9 @@ function parseFinanceRepByUnits(html, url) {
  * @param html
  * @param url
  */
-function parseRetailPriceHistory(html, url) {
-    let $html = $(html);
+function parseUnitRetailPriceHistory(html, url) {
+    // удалим динамические графики ибо жрут ресурсы в момент $(html) они всегда загружаются без кэша
+    let $html = $(html.replace(/<img.*\/graph\/.*>/i, "<img>"));
     try {
         // если продаж на неделе не было вообще => игра не запоминает в историю продаж такие дни вообще.
         // такие дни просто вылетают из списка.
@@ -3667,6 +3890,8 @@ function parseSupplyCreate(html, url) {
             let self = $r.hasClass("myself") || available <= 0;
             // цены ВСЕГДА ЕСТЬ. Даже если на складе пусто
             // это связано с тем что если склад открыт для покупки у него цена больше 0 должна стоять
+            // Есть цена поставщика, на которую работает ограничение по макс цене, и есть конечная цена
+            let origPrice = numberfyOrError($tds.eq(4).text());
             let nums = extractFloatPositive($tds.eq(5).html());
             if (nums == null || nums.length < 1)
                 throw new Error("невозможно получить цену.");
@@ -3689,8 +3914,9 @@ function parseSupplyCreate(html, url) {
                 companyName: companyName,
                 self: self,
                 isIndependend: isIndependent,
-                unit: { subid: subid, type: UnitTypes.unknown, name: unitName, size: 0, city: "" },
+                unit: { subid: subid, type: UnitTypes.unknown, typeStr: "unknown", name: unitName, size: 0, city: "" },
                 maxLimit: maxLimit > 0 ? maxLimit : null,
+                origPrice: origPrice,
                 stock: {
                     available: available,
                     total: total,
@@ -3743,7 +3969,8 @@ function mIndexFromString(str) {
     }
 }
 function parseCityRetailReport(html, url) {
-    let $html = $(html);
+    // удалим динамические графики ибо жрут ресурсы в момент $(html) они всегда загружаются без кэша
+    let $html = $(html.replace(/<img.*\/graph\/.*>/i, "<img>"));
     try {
         // какой то косяк верстки страниц и страница приходит кривая без второй таблицы, поэтому 
         // строку с индексом находим по слову Индекс
@@ -3795,7 +4022,10 @@ function parseCityRetailReport(html, url) {
 function parseProductsSize(html, url) {
     let $html = $(html);
     try {
-        let $rows = closestByTagName($html.find("table.grid img"), "tr");
+        let $tbl = isWindow($html, url)
+            ? $html.filter("table.grid")
+            : $html.find("table.grid");
+        let $rows = closestByTagName($tbl.find("img"), "tr");
         if ($rows.length < 100)
             throw new Error('слишком мало товаров найдено. очевидно ошибка');
         let res = {};
@@ -3827,7 +4057,11 @@ function parseProductsSize(html, url) {
 function parseCountryDuties(html, url) {
     let $html = $(html);
     try {
-        let $tbl = oneOrError($html, "table.list");
+        let $tbl = isWindow($html, url)
+            ? $html.filter("table.list")
+            : $html.find("table.list");
+        if ($tbl.length <= 0)
+            throw new Error("Не найдена таблица с товарами.");
         let $img = $tbl.find("td:nth-child(5n-4)");
         let $exp = $tbl.find("td:nth-child(5n-2)");
         let $imp = $tbl.find("td:nth-child(5n-1)");
@@ -3860,7 +4094,11 @@ function parseCountryDuties(html, url) {
 function parseTM(html, url) {
     let $html = $(html);
     try {
-        let $imgs = $html.find("table.grid").find("img");
+        let $imgs = isWindow($html, url)
+            ? $html.filter("table.grid").find("img")
+            : $html.find("table.grid").find("img");
+        if ($imgs.length <= 0)
+            throw new Error("Не найдено ни одного ТМ товара.");
         let dict = {};
         $imgs.each((i, el) => {
             let $img = $(el);
@@ -3885,7 +4123,11 @@ function parseTM(html, url) {
 function parseReportSpec(html, url) {
     let $html = $(html);
     try {
-        let $table = oneOrError($html, "table.list");
+        let $table = isWindow($html, url)
+            ? $html.filter("table.list")
+            : $html.find("table.list");
+        if ($table.length <= 0)
+            throw new Error("Не найдена таблица с данными");
         let $rows = $table.find("img").closest(".even, .odd"); // в каждой строке картинка товара, но картинки есть и в других местах
         if ($rows.length < 5)
             throw new Error(`найдено слишком мало(${$rows.length}) специализаций в отчете ${url}`);
@@ -3985,7 +4227,6 @@ class ParseError extends Error {
 $ = jQuery = jQuery.noConflict(true);
 $xioDebug = true;
 let Realm = getRealmOrError();
-let CompanyId = getCompanyId();
 // упрощаем себе жисть, подставляем имя скрипта всегда в сообщении
 function log(msg, ...args) {
     msg = "duties: " + msg;
@@ -3993,7 +4234,7 @@ function log(msg, ...args) {
 }
 function run_async() {
     return __awaiter(this, void 0, void 0, function* () {
-        let $header = oneOrError($(document), "div.metro_header_content");
+        let $header = oneOrError($(document), "div.metro_header");
         let $div = $("<div></div>");
         let $updateBtn = $("<input id='update' type='button' value='обновить'>");
         $div.append($updateBtn);
@@ -4044,9 +4285,9 @@ function exportInfo_async($place) {
  */
 function getGeos_async() {
     return __awaiter(this, void 0, void 0, function* () {
-        let countries_tpl = `/${Realm}/main/common/main_page/game_info/bonuses/country`;
-        let regions_tpl = `/${Realm}/main/common/main_page/game_info/bonuses/region`;
-        let cities_tpl = `/${Realm}/main/common/main_page/game_info/bonuses/city`;
+        let countries_tpl = `/${Realm}/window/common/main_page/game_info/bonuses/country`;
+        let regions_tpl = `/${Realm}/window/common/main_page/game_info/bonuses/region`;
+        let cities_tpl = `/${Realm}/window/common/main_page/game_info/bonuses/city`;
         try {
             // сначала собираем данные по городам регионам отдельно
             let cntryhtml = yield tryGet_async(countries_tpl);
